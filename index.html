@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>FNF SpriteSheet XML Generator</title>
+<style>
+:root{
+  --bg:#0b0d12; --panel:#121620; --panel2:#181d28; --line:#293142;
+  --text:#f4f6fb; --muted:#929bad; --accent:#7c5cff; --accent2:#a98cff;
+  --good:#55d98b; --danger:#ff5d73; --shadow:0 18px 50px #0008;
+}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(circle at 20% 0%,#1b1530 0,#0b0d12 35%);color:var(--text);font-family:Inter,system-ui,Segoe UI,Arial,sans-serif;min-height:100vh}
+button,input,select{font:inherit}
+button{cursor:pointer}
+.app{display:grid;grid-template-columns:280px 1fr;min-height:100vh}
+.sidebar{background:#0d1017;border-right:1px solid var(--line);padding:22px;display:flex;flex-direction:column;gap:18px}
+.brand{font-weight:900;font-size:20px;letter-spacing:-.5px}
+.brand span{color:var(--accent2)}
+.version{font-size:11px;color:var(--muted);margin-top:-13px}
+.section{border-top:1px solid var(--line);padding-top:16px}
+.section h3{font-size:11px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);margin:0 0 10px}
+.file-btn,.primary,.secondary,.danger{border:0;border-radius:10px;padding:11px 13px;color:white;font-weight:700}
+.file-btn,.primary{background:var(--accent)}
+.file-btn:hover,.primary:hover{background:#8b70ff}
+.secondary{background:var(--panel2);border:1px solid var(--line)}
+.danger{background:#3a1720;color:#ff9cac}
+.stack{display:grid;gap:8px}
+label{font-size:12px;color:var(--muted);display:block;margin-bottom:5px}
+input[type=text],input[type=number],select{width:100%;background:#0b0e14;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:9px;outline:none}
+input:focus,select:focus{border-color:var(--accent)}
+.main{padding:24px;min-width:0}
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:15px;margin-bottom:18px}
+.title h1{font-size:25px;margin:0}.title p{margin:4px 0 0;color:var(--muted);font-size:13px}
+.actions{display:flex;gap:8px}
+.workspace{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:18px}
+.card{background:#11151e;border:1px solid var(--line);border-radius:15px;box-shadow:var(--shadow);overflow:hidden}
+.card-head{padding:13px 15px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
+.card-head strong{font-size:13px}.hint{font-size:11px;color:var(--muted)}
+.preview-wrap{padding:14px;background:#090b10;min-height:500px;display:flex;align-items:center;justify-content:center;position:relative}
+canvas{max-width:100%;max-height:65vh;image-rendering:pixelated;background:
+linear-gradient(45deg,#202631 25%,transparent 25%) 0 0/20px 20px,
+linear-gradient(-45deg,#202631 25%,transparent 25%) 0 10px/20px 20px,
+linear-gradient(45deg,transparent 75%,#202631 75%) 10px -10px/20px 20px,
+linear-gradient(-45deg,transparent 75%,#202631 75%) -10px 0/20px 20px,#161b24;
+border:1px solid #303848}
+.drop{position:absolute;inset:15px;border:2px dashed #394254;border-radius:12px;display:flex;align-items:center;justify-content:center;color:var(--muted);pointer-events:none;opacity:.7}
+.drop.hidden{display:none}
+.controls{padding:15px;display:grid;gap:13px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.toggle{display:flex;align-items:center;justify-content:space-between;background:#0c1017;border:1px solid var(--line);padding:10px;border-radius:9px;font-size:12px}
+.toggle input{accent-color:var(--accent)}
+.frames{max-height:310px;overflow:auto}
+.frame{display:grid;grid-template-columns:42px 1fr auto;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid #202632}
+.thumb{width:42px;height:42px;object-fit:contain;background:#090b10;border:1px solid var(--line);image-rendering:pixelated}
+.frame-name{min-width:0}.frame-name b{display:block;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.frame-name small{color:var(--muted);font-size:10px}
+.icon-btn{border:1px solid var(--line);background:#0c1017;color:#cbd1dd;border-radius:7px;padding:6px 8px}
+.empty{padding:30px;text-align:center;color:var(--muted);font-size:13px}
+.status{font-size:11px;color:var(--muted);padding:8px 0}
+@media(max-width:1050px){.app{grid-template-columns:220px 1fr}.workspace{grid-template-columns:1fr}.sidebar{padding:16px}}
+@media(max-width:700px){.app{display:block}.sidebar{border-right:0;border-bottom:1px solid var(--line)}.main{padding:12px}.topbar{align-items:flex-start;flex-direction:column}.actions{width:100%}.actions button{flex:1}.preview-wrap{min-height:360px}}
+</style>
+</head>
+<body>
+<div class="app">
+<aside class="sidebar">
+  <div>
+    <div class="brand">FNF <span>SpriteSheet</span></div>
+    <div class="version">XML / Sparrow Atlas Generator</div>
+  </div>
+
+  <div class="section">
+    <h3>Import</h3>
+    <div class="stack">
+      <button class="file-btn" id="pick">ï¼‹ Add PNG Frames</button>
+      <button class="secondary" id="clear">Clear Frames</button>
+      <input id="files" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden>
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>Atlas</h3>
+    <div class="stack">
+      <div><label>Atlas filename</label><input id="atlasName" value="spritesheet.png"></div>
+      <div><label>XML filename</label><input id="xmlName" value="spritesheet.xml"></div>
+      <div class="grid2">
+        <div><label>Padding</label><input id="padding" type="number" min="0" value="2"></div>
+        <div><label>Spacing</label><input id="spacing" type="number" min="0" value="0"></div>
+      </div>
+      <div class="grid2">
+        <div><label>Max atlas width</label><input id="maxW" type="number" min="64" value="2048"></div>
+        <div><label>Max atlas height</label><input id="maxH" type="number" min="64" value="2048"></div>
+      </div>
+      <div class="toggle"><span>Power-of-two size</span><input id="pot" type="checkbox" checked></div>
+      <div class="toggle"><span>Trim transparent pixels</span><input id="trim" type="checkbox"></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>Naming</h3>
+    <div class="stack">
+      <div><label>Prefix</label><input id="prefix" value=""></div>
+      <div><label>Start number</label><input id="startNum" type="number" value="0"></div>
+      <div class="toggle"><span>Number frames automatically</span><input id="autoName" type="checkbox"></div>
+    </div>
+  </div>
+
+  <div style="margin-top:auto">
+    <div class="status" id="status">Drop images anywhere to begin.</div>
+    <button class="primary" style="width:100%" id="generate">Generate PNG + XML</button>
+  </div>
+</aside>
+
+<main class="main">
+  <div class="topbar">
+    <div class="title">
+      <h1>SpriteSheet Builder</h1>
+      <p>Build a PNG atlas and FNF-compatible Sparrow XML without external software.</p>
+    </div>
+    <div class="actions">
+      <button class="secondary" id="downloadXml">Download XML</button>
+      <button class="primary" id="downloadPng">Download PNG</button>
+    </div>
+  </div>
+
+  <div class="workspace">
+    <section class="card">
+      <div class="card-head">
+        <strong>Atlas Preview</strong>
+        <span class="hint" id="sizeInfo">No atlas</span>
+      </div>
+      <div class="preview-wrap" id="dropZone">
+        <canvas id="canvas" width="640" height="360"></canvas>
+        <div class="drop" id="dropLabel">Drop PNGs here</div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <strong>Frames</strong>
+        <span class="hint" id="frameCount">0 frames</span>
+      </div>
+      <div class="frames" id="frameList">
+        <div class="empty">No frames yet.<br>Add your FNF sprites/animations.</div>
+      </div>
+    </section>
+  </div>
+</main>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const canvas = $("canvas"), ctx = canvas.getContext("2d");
+let frames = [];
+let atlas = null;
+let xmlText = "";
+
+function esc(s){
+  return String(s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+function nextPow2(n){ let x=1; while(x<n)x*=2; return x; }
+
+function trimImage(img){
+  const c=document.createElement("canvas"), x=c.getContext("2d");
+  c.width=img.naturalWidth; c.height=img.naturalHeight; x.drawImage(img,0,0);
+  const d=x.getImageData(0,0,c.width,c.height).data;
+  let minX=c.width,minY=c.height,maxX=-1,maxY=-1;
+  for(let y=0;y<c.height;y++) for(let xx=0;xx<c.width;xx++){
+    if(d[(y*c.width+xx)*4+3]>0){
+      minX=Math.min(minX,xx); minY=Math.min(minY,y);
+      maxX=Math.max(maxX,xx); maxY=Math.max(maxY,y);
+    }
+  }
+  if(maxX<0) return {canvas:c,x:0,y:0,w:1,h:1,origW:c.width,origH:c.height};
+  const out=document.createElement("canvas");
+  out.width=maxX-minX+1; out.height=maxY-minY+1;
+  out.getContext("2d").drawImage(c,minX,minY,out.width,out.height,0,0,out.width,out.height);
+  return {canvas:out,x:minX,y:minY,w:out.width,h:out.height,origW:c.width,origH:c.height};
+}
+
+function loadFile(file){
+  return new Promise((resolve,reject)=>{
+    const url=URL.createObjectURL(file), img=new Image();
+    img.onload=()=>{
+      const t=$("trim").checked ? trimImage(img) : {
+        canvas:(()=>{let c=document.createElement("canvas");c.width=img.naturalWidth;c.height=img.naturalHeight;c.getContext("2d").drawImage(img,0,0);return c})(),
+        x:0,y:0,w:img.naturalWidth,h:img.naturalHeight,origW:img.naturalWidth,origH:img.naturalHeight
+      };
+      URL.revokeObjectURL(url); resolve(t);
+    };
+    img.onerror=reject; img.src=url;
+  });
+}
+
+async function addFiles(list){
+  const files=[...list].filter(f=>/^image\/(png|jpeg|webp)$/.test(f.type));
+  for(const file of files){
+    try{
+      const t=await loadFile(file);
+      frames.push({fileName:file.name, source:t, name:file.name.replace(/\.[^.]+$/,"")});
+    }catch(e){ console.error(e); }
+  }
+  renderFrames(); build();
+}
+
+function renderFrames(){
+  $("frameCount").textContent=frames.length+" frame"+(frames.length===1?"":"s");
+  const box=$("frameList"); box.innerHTML="";
+  if(!frames.length){box.innerHTML='<div class="empty">No frames yet.<br>Add your FNF sprites/animations.</div>';return;}
+  frames.forEach((f,i)=>{
+    const row=document.createElement("div"); row.className="frame";
+    const img=document.createElement("img"); img.className="thumb"; img.src=f.source.canvas.toDataURL();
+    const info=document.createElement("div"); info.className="frame-name";
+    info.innerHTML="<b>"+esc(f.name)+"</b><small>"+f.source.w+" Ã— "+f.source.h+"</small>";
+    const del=document.createElement("button"); del.className="icon-btn"; del.textContent="Ã—";
+    del.onclick=()=>{frames.splice(i,1);renderFrames();build()};
+    row.append(img,info,del); box.append(row);
+  });
+}
+
+function pack(){
+  const pad=Math.max(0,+$("padding").value||0), gap=Math.max(0,+$("spacing").value||0);
+  const maxW=Math.max(64,+$("maxW").value||2048), maxH=Math.max(64,+$("maxH").value||2048);
+  let x=pad,y=pad,rowH=0, placements=[], usedW=0,usedH=0;
+  for(let i=0;i<frames.length;i++){
+    const f=frames[i], w=f.source.w, h=f.source.h;
+    if(x+w+pad>maxW && x>pad){x=pad;y+=rowH+gap;rowH=0;}
+    if(y+h+pad>maxH) throw new Error("Atlas exceeds the selected maximum height.");
+    placements.push({x,y,w,h,frame:f,index:i});
+    x+=w+gap; rowH=Math.max(rowH,h);
+    usedW=Math.max(usedW,x+pad); usedH=Math.max(usedH,y+h+pad);
+  }
+  let W=Math.max(1,usedW),H=Math.max(1,usedH);
+  if($("pot").checked){W=nextPow2(W);H=nextPow2(H);}
+  if(W>maxW||H>maxH) throw new Error("Power-of-two atlas exceeds the selected maximum size.");
+  return {placements,W,H};
+}
+
+function build(){
+  if(!frames.length){
+    atlas=null; xmlText="";
+    canvas.width=640;canvas.height=360;ctx.clearRect(0,0,640,360);
+    $("sizeInfo").textContent="No atlas"; $("status").textContent="Drop images anywhere to begin."; return;
+  }
+  try{
+    const p=pack(); atlas=p;
+    canvas.width=p.W;canvas.height=p.H;ctx.clearRect(0,0,p.W,p.H);
+    const prefix=$("prefix").value, auto=$("autoName").checked, start=+$("startNum").value||0;
+    let subs=[];
+    p.placements.forEach((q,i)=>{
+      ctx.drawImage(q.frame.source.canvas,q.x,q.y);
+      const nm=auto ? prefix+String(start+i) : prefix+q.frame.name;
+      q.exportName=nm;
+      const t=q.frame.source;
+      const fx=t.x, fy=t.y, fw=t.origW, fh=t.origH;
+      subs.push(`    <SubTexture name="${esc(nm)}" x="${q.x}" y="${q.y}" width="${q.w}" height="${q.h}" frameX="${-fx}" frameY="${-fy}" frameWidth="${fw}" frameHeight="${fh}" />`);
+    });
+    xmlText=`<?xml version="1.0" encoding="UTF-8"?>\\n<TextureAtlas imagePath="${esc($("atlasName").value)}" width="${p.W}" height="${p.H}">\\n${subs.join("\\n")}\\n</TextureAtlas>\\n`;
+    $("sizeInfo").textContent=p.W+" Ã— "+p.H;
+    $("status").textContent="Atlas ready â€¢ "+frames.length+" frame"+(frames.length===1?"":"s");
+  }catch(e){
+    atlas=null; xmlText="";
+    $("status").textContent="âš  "+e.message;
+  }
+}
+
+function downloadBlob(blob,name){
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+function pngBlob(cb){
+  canvas.toBlob(b=>cb(b),"image/png");
+}
+
+$("pick").onclick=()=>$("files").click();
+$("files").onchange=e=>addFiles(e.target.files);
+$("clear").onclick=()=>{frames=[];renderFrames();build()};
+$("generate").onclick=()=>{build(); if(!atlas)return; pngBlob(b=>downloadBlob(b,$("atlasName").value||"spritesheet.png")); downloadBlob(new Blob([xmlText],{type:"application/xml"}),$("xmlName").value||"spritesheet.xml");};
+$("downloadXml").onclick=()=>{build();if(xmlText)downloadBlob(new Blob([xmlText],{type:"application/xml"}),$("xmlName").value||"spritesheet.xml")};
+$("downloadPng").onclick=()=>{build();if(atlas)pngBlob(b=>downloadBlob(b,$("atlasName").value||"spritesheet.png"))};
+
+["padding","spacing","maxW","maxH","pot","trim","prefix","startNum","autoName","atlasName","xmlName"].forEach(id=>{
+  $(id).addEventListener("input",()=>{if(id==="trim" && frames.length){ /* existing pixels stay as imported; rebuild trim requires reimport */ } build()});
+  $(id).addEventListener("change",build);
+});
+
+const dz=$("dropZone");
+["dragenter","dragover"].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();$("dropLabel").classList.remove("hidden")}));
+["dragleave","drop"].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();if(ev==="dragleave"&&!e.relatedTarget){} if(ev==="drop"){ $("dropLabel").classList.add("hidden");addFiles(e.dataTransfer.files)}}));
+document.addEventListener("dragover",e=>e.preventDefault());
+document.addEventListener("drop",e=>e.preventDefault());
+
+window.addEventListener("keydown",e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="o"){e.preventDefault();$("files").click()}
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="s"){e.preventDefault();$("generate").click()}
+});
+</script>
+</body>
+</html>
