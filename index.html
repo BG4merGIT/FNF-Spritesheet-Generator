@@ -75,9 +75,9 @@ border:1px solid #303848}
   <div class="section">
     <h3>Import</h3>
     <div class="stack">
-      <button class="file-btn" id="pick">＋ Add PNG Frames</button>
+      <button class="file-btn" id="pick">＋ Add PNG Frames</button><div class="status" style="margin-top:6px">Maximum: <b>1000 PNGs</b></div>
       <button class="secondary" id="clear">Clear Frames</button>
-      <input id="files" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden>
+      <input id="files" type="file" accept="image/png" multiple hidden>
     </div>
   </div>
 
@@ -109,7 +109,7 @@ border:1px solid #303848}
   </div>
 
   <div style="margin-top:auto">
-    <div class="status" id="status">Drop images anywhere to begin.</div>
+    <div class="status" id="status">Drop images anywhere to begin • up to 1000 PNGs.</div>
     <button class="primary" style="width:100%" id="generate">Generate PNG + XML</button>
   </div>
 </aside>
@@ -198,14 +198,18 @@ function loadFile(file){
 }
 
 async function addFiles(list){
-  const files=[...list].filter(f=>/^image\/(png|jpeg|webp)$/.test(f.type));
-  for(const file of files){
-    try{
-      const t=await loadFile(file);
-      frames.push({fileName:file.name, source:t, name:file.name.replace(/\.[^.]+$/,"")});
-    }catch(e){ console.error(e); }
+  const MAX_FRAMES = 1000;
+  const files=[...list].filter(f=>f.type==="image/png");
+  const room=MAX_FRAMES-frames.length;
+  if(room<=0){$("status").textContent="⚠ Maximum of 1000 PNG frames reached.";return;}
+  const accepted=files.slice(0,room);
+  const skipped=Math.max(0,files.length-accepted.length);
+  for(const file of accepted){
+    try{const t=await loadFile(file);frames.push({fileName:file.name,source:t,name:file.name.replace(/\.[^.]+$/,"")});}
+    catch(e){console.error(e);}
   }
-  renderFrames(); build();
+  renderFrames();build();
+  if(skipped>0)$('"'"'status'"'"').textContent=`Added ${accepted.length} frame${accepted.length===1?"":"s"} • ${skipped} skipped • 1000-frame limit`;
 }
 
 function renderFrames(){
@@ -226,26 +230,109 @@ function renderFrames(){
 function pack(){
   const pad=Math.max(0,+$("padding").value||0), gap=Math.max(0,+$("spacing").value||0);
   const maxW=Math.max(64,+$("maxW").value||2048), maxH=Math.max(64,+$("maxH").value||2048);
-  let x=pad,y=pad,rowH=0, placements=[], usedW=0,usedH=0;
-  for(let i=0;i<frames.length;i++){
-    const f=frames[i], w=f.source.w, h=f.source.h;
-    if(x+w+pad>maxW && x>pad){x=pad;y+=rowH+gap;rowH=0;}
-    if(y+h+pad>maxH) throw new Error("Atlas exceeds the selected maximum height.");
-    placements.push({x,y,w,h,frame:f,index:i});
-    x+=w+gap; rowH=Math.max(rowH,h);
-    usedW=Math.max(usedW,x+pad); usedH=Math.max(usedH,y+h+pad);
-  }
-  let W=Math.max(1,usedW),H=Math.max(1,usedH);
-  if($("pot").checked){W=nextPow2(W);H=nextPow2(H);}
-  if(W>maxW||H>maxH) throw new Error("Power-of-two atlas exceeds the selected maximum size.");
-  return {placements,W,H};
-}
 
+  // MaxRects-style best-fit packing. Instead of putting every sprite on one
+  // horizontal row, this actively searches the remaining empty rectangles,
+  // so transparent/unused space in the atlas can be reused by later frames.
+  const items=frames.map((frame,index)=>({
+    frame,index,w:frame.source.w+gap,h:frame.source.h+gap
+  })).sort((a,b)=>(b.w*b.h)-(a.w*a.h));
+
+  const usableW=maxW-pad*2, usableH=maxH-pad*2;
+  if(items.some(it=>it.w>usableW || it.h>usableH))
+    throw new Error("A frame is larger than the selected maximum atlas size.");
+
+  function tryPack(W,H){
+    const free=[{x:pad,y:pad,w:W-pad*2,h:H-pad*2}];
+    const placements=[];
+
+    function intersects(a,b){
+      return a.x < b.x+b.w && a.x+a.w > b.x && a.y < b.y+b.h && a.y+a.h > b.y;
+    }
+    function contained(a,b){
+      return a.x>=b.x && a.y>=b.y && a.x+a.w<=b.x+b.w && a.y+a.h<=b.y+b.h;
+    }
+    function splitFree(rect,used){
+      const next=[];
+      for(const r of free){
+        if(!intersects(r,used)){next.push(r);continue;}
+        if(used.x>r.x) next.push({x:r.x,y:r.y,w:used.x-r.x,h:r.h});
+        if(used.x+used.w<r.x+r.w) next.push({x:used.x+used.w,y:r.y,w:r.x+r.w-(used.x+used.w),h:r.h});
+        if(used.y>r.y) next.push({x:r.x,y:r.y,w:r.w,h:used.y-r.y});
+        if(used.y+used.h<r.y+r.h) next.push({x:r.x,y:used.y+used.h,w:r.w,h:r.y+r.h-(used.y+used.h)});
+      }
+      free.length=0;
+      for(const r of next) if(r.w>0&&r.h>0) free.push(r);
+      for(let i=free.length-1;i>=0;i--){
+        for(let j=0;j<free.length;j++) if(i!==j && contained(free[i],free[j])){free.splice(i,1);break;}
+      }
+    }
+
+    for(const it of items){
+      let best=null,bestScore=Infinity,bestShort=Infinity;
+      for(const r of free){
+        if(it.w<=r.w && it.h<=r.h){
+          const leftoverW=r.w-it.w, leftoverH=r.h-it.h;
+          const short=Math.min(leftoverW,leftoverH);
+          const long=Math.max(leftoverW,leftoverH);
+          const score=short*100000+long;
+          if(score<bestScore || (score===bestScore&&short<bestShort)){
+            best={x:r.x,y:r.y,w:it.w,h:it.h};bestScore=score;bestShort=short;
+          }
+        }
+      }
+      if(!best) return null;
+      splitFree(null,best);
+      placements.push({x:best.x,y:best.y,w:it.frame.source.w,h:it.frame.source.h,frame:it.frame,index:it.index});
+    }
+    return {placements,W,H};
+  }
+
+  // Search compact atlas sizes. This is deliberately more aggressive than
+  // simple row packing: the free-rectangle packer above reuses holes between
+  // differently-sized sprites instead of treating transparent/unused areas
+  // as permanently occupied.
+  let result=null;
+  const minW=Math.max(64,Math.max(...items.map(i=>i.w))+pad*2);
+  const minH=Math.max(64,Math.max(...items.map(i=>i.h))+pad*2);
+
+  const widthCandidates=[];
+  if($("pot").checked){
+    for(let w=64;w<=maxW;w*=2) if(w>=minW) widthCandidates.push(w);
+    if(!widthCandidates.includes(maxW) && maxW>=minW) widthCandidates.push(maxW);
+    widthCandidates.sort((a,b)=>a-b);
+  }else{
+    widthCandidates.push(maxW);
+  }
+
+  // Prefer the user's maximum width first; this keeps more room for packing
+  // while allowing the height to shrink dramatically.
+  widthCandidates.sort((a,b)=>b-a);
+
+  for(const W of widthCandidates){
+    if($("pot").checked){
+      for(let H=64;H<=maxH;H*=2){
+        if(H<minH) continue;
+        result=tryPack(W,H);
+        if(result) break;
+      }
+    }else{
+      for(let H=minH;H<=maxH;H++){
+        result=tryPack(W,H);
+        if(result) break;
+      }
+    }
+    if(result) break;
+  }
+
+  if(!result) throw new Error("Atlas exceeds the selected maximum size. Try enabling a larger atlas or reducing sprite sizes.");
+  return result;
+}
 function build(){
   if(!frames.length){
     atlas=null; xmlText="";
     canvas.width=640;canvas.height=360;ctx.clearRect(0,0,640,360);
-    $("sizeInfo").textContent="No atlas"; $("status").textContent="Drop images anywhere to begin."; return;
+    $("sizeInfo").textContent="No atlas"; $("status").textContent="Drop images anywhere to begin • up to 1000 PNGs."; return;
   }
   try{
     const p=pack(); atlas=p;
@@ -262,9 +349,7 @@ function build(){
     });
     xmlText = [
       '<?xml version="1.0" encoding="UTF-8"?>',
-      '<!-- Generated by FNF SpriteSheet Builder -->',
-      '<!-- XML format reference: https://www.codeandweb.com/texturepacker/documentation -->',
-      '<!-- Compatible with the Sparrow-style TextureAtlas/SubTexture structure used by FNF tooling. -->',
+      '<!-- Generated by FNF SpriteSheet Generator by BG4mer https://bg4mergit.github.io/FNF-Spritesheet-Generator/ -->',
       `<TextureAtlas imagePath="${esc($("atlasName").value)}">`,
       subs.join("\n"),
       '</TextureAtlas>',
